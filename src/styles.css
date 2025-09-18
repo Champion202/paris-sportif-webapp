@@ -1,3 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+/* 📌 Tailwind directives - doivent venir en haut */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 🌗 Appliquer les styles globaux après les directives */
+@layer base {
+  html {
+    @apply bg-gray-50 text-gray-900 dark:bg-gray-800 dark:text-white;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    @apply bg-transparent;
+  }
+}
