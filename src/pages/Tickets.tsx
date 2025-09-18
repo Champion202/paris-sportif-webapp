@@ -1,26 +1,26 @@
 // src/pages/Tickets.tsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { useAuth } from "../context/AuthContext"; // ⬅️ important : on attend l'auth
 
 type Match = {
   home_team: string;
   away_team: string;
-  logo_home?: string;
-  logo_away?: string;
-  time: string;
+  logo_home?: string | null;
+  logo_away?: string | null;
+  time: string; // "HH:MM" ou "HH:MM:SS"
 };
 
 type Ticket = {
   id: number;
-  user_id: string;
   match: Match;
-  status: string; // "pending", "win", "lose", "canceled"
-  risk_level: string; // "faible", "moyen", "élevé"
-  created_at: string;
+  status: "pending" | "win" | "lose" | "canceled";
+  risk_level: "faible" | "moyen" | "élevé";
+  created_at: string; // ISO
   result?: string | null;
 };
 
-function formatStatus(status: string) {
+function formatStatus(status: Ticket["status"]) {
   switch (status) {
     case "win":
       return "✅ Gagné";
@@ -33,7 +33,7 @@ function formatStatus(status: string) {
   }
 }
 
-function statusColor(status: string) {
+function statusColor(status: Ticket["status"]) {
   switch (status) {
     case "win":
       return "bg-green-100 text-green-700 dark:bg-green-700 dark:text-white";
@@ -47,21 +47,23 @@ function statusColor(status: string) {
 }
 
 export default function Tickets() {
+  const { ready } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!ready) return; // ⚠️ attend que le token soit injecté dans axios
+    setLoading(true);
     axios
-      .get("http://localhost:8000/api/tickets/")
-      .then((res) => {
-        setTickets(res.data);
-        setLoading(false);
-      })
+      .get("/api/tickets/") // baseURL + Authorization déjà gérés par AuthContext
+      .then((res) => setTickets(res.data))
       .catch((err) => {
-        console.error("Erreur récupération tickets :", err);
-        setLoading(false);
-      });
-  }, []);
+        console.error("Erreur récupération tickets :", err?.response?.data || err?.message);
+      })
+      .finally(() => setLoading(false));
+  }, [ready]);
+
+  const timeLabel = (t?: string) => (t ? t.slice(0, 5) : "");
 
   return (
     <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white transition-colors duration-300">
@@ -76,7 +78,7 @@ export default function Tickets() {
           {tickets.map((ticket) => (
             <div
               key={ticket.id}
-              className={`bg-white dark:bg-gray-700 shadow-lg rounded-xl p-4 border-l-4 transition-all duration-300 hover:scale-[1.02] cursor-pointer transform hover:shadow-xl`}
+              className="bg-white dark:bg-gray-700 shadow-lg rounded-xl p-4 border-l-4 transition-all duration-300 hover:scale-[1.02] cursor-pointer transform hover:shadow-xl"
               style={{
                 borderColor:
                   ticket.status === "win"
@@ -91,7 +93,7 @@ export default function Tickets() {
                 alert(
                   `Ticket #${ticket.id}
 Match : ${ticket.match.home_team} vs ${ticket.match.away_team}
-Heure : ${ticket.match.time}
+Heure : ${timeLabel(ticket.match.time)}
 Statut : ${formatStatus(ticket.status)}
 Résultat : ${ticket.result || "Non disponible"}
 Risque : ${ticket.risk_level}`
@@ -104,28 +106,24 @@ Risque : ${ticket.risk_level}`
                   alt={ticket.match.home_team}
                   className="w-8 h-8 rounded-full border"
                 />
-                <span className="font-semibold">
-                  {ticket.match.home_team}
-                </span>
+                <span className="font-semibold">{ticket.match.home_team}</span>
                 <span className="mx-1 text-gray-400">vs</span>
-                <span className="font-semibold">
-                  {ticket.match.away_team}
-                </span>
+                <span className="font-semibold">{ticket.match.away_team}</span>
                 <img
                   src={ticket.match.logo_away || "https://placehold.co/40x40"}
                   alt={ticket.match.away_team}
                   className="w-8 h-8 rounded-full border"
                 />
                 <span className="ml-auto text-sm text-blue-700 dark:text-blue-300">
-                  ⏰ {ticket.match.time}
+                  ⏰ {timeLabel(ticket.match.time)}
                 </span>
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-300 mb-1">
-                Date : {ticket.created_at?.slice(0, 10)}
+                Date : {ticket.created_at?.slice(0, 10)}
               </div>
               {ticket.result && (
                 <div className="text-xs text-blue-600 dark:text-blue-300 mb-1">
-                  Résultat : {ticket.result}
+                  Résultat : {ticket.result}
                 </div>
               )}
               <div>
@@ -137,7 +135,7 @@ Risque : ${ticket.risk_level}`
                   {formatStatus(ticket.status)}
                 </span>
                 <span className="ml-2 inline-block px-2 py-1 text-xs rounded-full bg-blue-50 dark:bg-blue-800 text-blue-700 dark:text-white">
-                  Risque : {ticket.risk_level}
+                  Risque : {ticket.risk_level}
                 </span>
               </div>
             </div>

@@ -9,7 +9,8 @@ import { BottomNav } from "./components/layout/BottomNav";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import ScrollToTop from "./components/ScrollToTop"; // ← AJOUT
+import ScrollToTop from "./components/ScrollToTop";
+import { useAuth } from "./context/AuthContext"; // ⬅️ NEW
 
 type Notification = {
   id: number | string;
@@ -22,27 +23,39 @@ type Notification = {
 
 function AppRoutes() {
   const { theme } = useTheme();
+  const { ready } = useAuth(); // ⬅️ NEW
 
-  // 💡 Centralisation des notifications ici
+  // Centralisation des notifications
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // ⚠️ Attend que l'auth soit prête (token injecté dans axios par AuthContext)
   useEffect(() => {
+    if (!ready) return;
+    setLoading(true);
     axios
-      .get("http://localhost:8000/api/notifications/")
-      .then((res) => {
-        setNotifications(res.data);
-        setLoading(false);
-      })
+      .get("/api/notifications/") // baseURL déjà mise par AuthContext
+      .then((res) => setNotifications(res.data))
       .catch((err) => {
-        console.error("Erreur récupération notifications :", err);
-        setLoading(false);
-      });
-  }, []);
+        console.error("Erreur récupération notifications :", err?.response?.data || err?.message);
+      })
+      .finally(() => setLoading(false));
+  }, [ready]);
+
+  // Petit splash tant que l'auth n'est pas prête (évite 401 au 1er rendu)
+  if (!ready) {
+    return (
+      <div className={theme === "dark" ? "dark" : ""}>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-700 dark:bg-gray-800 dark:text-white">
+          <div className="text-sm opacity-80">Initialisation…</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={theme === "dark" ? "dark" : ""}>
-      <ScrollToTop /> {/* ← AJOUT ICI */}
+      <ScrollToTop />
       <div className="min-h-screen pb-20 bg-gray-50 text-gray-900 dark:bg-gray-800 dark:text-white transition duration-300">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -50,7 +63,16 @@ function AppRoutes() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/analyse/:id" element={<MatchAnalysis />} />
           <Route path="/analyse" element={<MatchAnalysis />} />
-          <Route path="/notifications" element={<Notifications notifications={notifications} setNotifications={setNotifications} loading={loading} />} />
+          <Route
+            path="/notifications"
+            element={
+              <Notifications
+                notifications={notifications}
+                setNotifications={setNotifications}
+                loading={loading}
+              />
+            }
+          />
         </Routes>
         <BottomNav notifications={notifications} />
       </div>

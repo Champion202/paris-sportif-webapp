@@ -4,10 +4,10 @@ import { Button } from "../components/ui/Button";
 
 type Notification = {
   id: number | string;
-  title: string;
+  title: string;                  // reçu du backend (par défaut "Notification")
   message: string;
   type: "success" | "error" | "info";
-  date: string;
+  date: string;                   // ISO (créé côté backend depuis created_at)
   read: boolean;
 };
 
@@ -17,24 +17,49 @@ type NotificationsPageProps = {
   loading: boolean;
 };
 
+function formatDate(iso?: string) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    // Affichage local lisible ; le navigateur utilise le fuseau de l’utilisateur
+    return d.toLocaleString("fr-FR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function getColor(type: Notification["type"], read: boolean) {
+  const base = read ? "opacity-60" : "opacity-100";
+  switch (type) {
+    case "success":
+      return `bg-green-100 text-green-800 dark:bg-green-700 dark:text-white ${base}`;
+    case "error":
+      return `bg-red-100 text-red-800 dark:bg-red-700 dark:text-white ${base}`;
+    case "info":
+    default:
+      return `bg-blue-100 text-blue-800 dark:bg-blue-700 dark:text-white ${base}`;
+  }
+}
+
 export default function Notifications({
   notifications,
   setNotifications,
   loading,
 }: NotificationsPageProps) {
-  // Marquer une notification comme lue (optimiste côté UI)
+  // Marquer une notif lue (optimiste côté UI — PATCH backend possible plus tard)
   const markAsRead = (id: number | string) => {
-    setNotifications((prev) =>
-      prev.map((n) =>
-        n.id === id ? { ...n, read: true } : n
-      )
-    );
-    // Plus tard : PATCH backend si besoin
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
   const markAllAsRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    alert("✅ Toutes les notifications ont été marquées comme lues.");
+    // TODO (optionnel) : appeler plus tard un endpoint PATCH en lot
   };
 
   const handleClick = (id: number | string) => {
@@ -42,19 +67,6 @@ export default function Notifications({
     const clicked = notifications.find((n) => n.id === id);
     if (clicked) {
       alert(`📬 ${clicked.title}\n\n${clicked.message}`);
-    }
-  };
-
-  const getColor = (type: string, read: boolean) => {
-    const base = read ? "opacity-60" : "opacity-100";
-    switch (type) {
-      case "success":
-        return `bg-green-100 text-green-800 dark:bg-green-700 dark:text-white ${base}`;
-      case "error":
-        return `bg-red-100 text-red-800 dark:bg-red-700 dark:text-white ${base}`;
-      case "info":
-      default:
-        return `bg-blue-100 text-blue-800 dark:bg-blue-700 dark:text-white ${base}`;
     }
   };
 
@@ -75,21 +87,21 @@ export default function Notifications({
       ) : (
         <div className="space-y-4 max-w-xl mx-auto">
           {notifications.length > 0 ? (
-            notifications.map((notification) => (
+            notifications.map((n) => (
               <div
-                key={notification.id}
-                onClick={() => handleClick(notification.id)}
+                key={n.id}
+                onClick={() => handleClick(n.id)}
                 className={`cursor-pointer p-4 rounded-lg shadow hover:scale-[1.01] transition ${getColor(
-                  notification.type,
-                  notification.read
+                  n.type,
+                  n.read
                 )}`}
               >
-                <div className="font-semibold">{notification.title}</div>
-                <div className="text-sm">{notification.message}</div>
+                <div className="font-semibold">{n.title || "Notification"}</div>
+                <div className="text-sm">{n.message}</div>
                 <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                  📅 {notification.date}
+                  📅 {formatDate(n.date)}
                 </div>
-                {!notification.read && (
+                {!n.read && (
                   <span className="text-xs font-bold text-blue-600 dark:text-blue-300">
                     • Non lue
                   </span>

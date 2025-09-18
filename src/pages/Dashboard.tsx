@@ -11,12 +11,28 @@ type Match = {
   home_team: string;
   away_team: string;
   date: string;
-  time: string;
+  time: string;        // "HH:MM" ou "HH:MM:SS"
   championship: string;
   is_live: boolean;
-  logo_home?: string;
-  logo_away?: string;
+  logo_home?: string;  // ⬅️ plus de "null" ici
+  logo_away?: string;  // ⬅️ plus de "null" ici
 };
+
+// Convertit null -> undefined et nettoie l'heure
+function normalizeMatch(m: any): Match {
+  const timeStr = (m?.time ? String(m.time) : "").slice(0, 5); // "HH:MM"
+  return {
+    id: Number(m.id),
+    home_team: String(m.home_team ?? ""),
+    away_team: String(m.away_team ?? ""),
+    date: String(m.date ?? ""),
+    time: timeStr,
+    championship: String(m.championship ?? ""),
+    is_live: Boolean(m.is_live),
+    logo_home: m.logo_home ?? undefined,
+    logo_away: m.logo_away ?? undefined,
+  };
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -38,39 +54,33 @@ export default function Dashboard() {
   useEffect(() => {
     setLoading(true);
     axios
-      .get("http://localhost:8000/api/matchs/")
-      .then((res) => {
-        setMatches(res.data);
-        setLoading(false);
-      })
+      .get("/api/matchs/") // baseURL défini dans AuthContext
+      .then((res) => setMatches((res.data || []).map(normalizeMatch)))
       .catch((err) => {
-        console.error("Erreur récupération matchs :", err);
-        setLoading(false);
-      });
+        console.error("Erreur récupération matchs :", err?.response?.data || err?.message);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   // --- Fetch matchs live + refresh automatique toutes les 60s
   const fetchLiveMatches = useCallback(() => {
     setLoadingLive(true);
     axios
-      .get("http://localhost:8000/api/matchs/live/")
-      .then((res) => {
-        setLiveMatches(res.data);
-        setLoadingLive(false);
-      })
+      .get("/api/matchs/live/")
+      .then((res) => setLiveMatches((res.data || []).map(normalizeMatch)))
       .catch((err) => {
-        console.error("Erreur récupération matchs live :", err);
-        setLoadingLive(false);
-      });
+        console.error("Erreur récupération matchs live :", err?.response?.data || err?.message);
+      })
+      .finally(() => setLoadingLive(false));
   }, []);
 
   useEffect(() => {
     fetchLiveMatches();
-    const interval = setInterval(fetchLiveMatches, 600000); // toutes les 600s
+    const interval = setInterval(fetchLiveMatches, 60_000); // toutes les 60s
     return () => clearInterval(interval);
   }, [fetchLiveMatches]);
 
-  // --- Liste unique des championnats (prend tous les championnats des deux listes)
+  // --- Liste unique des championnats
   const championships = useMemo(() => {
     const all = [
       ...matches.map((m) => m.championship),

@@ -4,7 +4,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { Button } from "../components/ui/Button";
 import SuggestionBlock from "../components/SuggestionBlock";
-import AdminBanner from '../components/layout/AdminBanner';
+import AdminBanner from "../components/layout/AdminBanner";
+import { useAuth } from "../context/AuthContext"; // pour attendre l'auth au moment de créer un ticket
 
 // === Blocs spécialisés pour chaque type de stats ===
 function FixtureDetails({ fixture }: { fixture: any }) {
@@ -17,9 +18,12 @@ function FixtureDetails({ fixture }: { fixture: any }) {
       <div><b>Pays :</b> {fixture.league?.country}</div>
       <div><b>Compétition :</b> {fixture.league?.name}</div>
       <div><b>Saison :</b> {fixture.league?.season}</div>
-      <div><b>Date :</b> {fixture.fixture?.date?.replace('T', ' ').slice(0, 16)}</div>
-      <div><b>Statut :</b> {fixture.fixture?.status?.long} {fixture.fixture?.status?.elapsed ? `(${fixture.fixture?.status?.elapsed}’)` : ""}</div>
-      <div><b>Arbitre :</b> {fixture.fixture?.referee || "Non précisé"}</div>
+      <div><b>Date :</b> {fixture.fixture?.date?.replace("T", " ").slice(0, 16)}</div>
+      <div>
+        <b>Statut :</b> {fixture.fixture?.status?.long}{" "}
+        {fixture.fixture?.status?.elapsed ? `(${fixture.fixture?.status?.elapsed}’)` : ""}
+      </div>
+      <div><b>Arbitre :</b> {fixture.fixture?.referee || "Non précisé"}</div>
     </div>
   );
 }
@@ -82,7 +86,7 @@ function LineupsBlock({ lineups }: { lineups: any[] }) {
   );
 }
 
-function OddsBlock({ odds, title = "Cotes" }: { odds: any[], title?: string }) {
+function OddsBlock({ odds, title = "Cotes" }: { odds: any[]; title?: string }) {
   if (!odds?.length) return <div className="text-gray-400 italic">Aucune cote détectée…</div>;
   return (
     <div>
@@ -91,13 +95,6 @@ function OddsBlock({ odds, title = "Cotes" }: { odds: any[], title?: string }) {
     </div>
   );
 }
-
-type Stat = { type: string; value: string | number | null };
-type TeamStats = { team: { id: number; name: string; logo: string }; statistics: Stat[] };
-type Event = any;
-type Lineup = any;
-type PlayerStat = any;
-type OddsLive = any;
 
 type MatchStats = {
   last5Home?: { date: string; homeTeam: string; awayTeam: string; score: string }[];
@@ -125,6 +122,7 @@ type MatchDetails = {
 export default function MatchAnalysis() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const { ready } = useAuth(); // pour le POST de ticket
 
   // States pour pré-match
   const [match, setMatch] = useState<MatchDetails | null>(null);
@@ -132,20 +130,20 @@ export default function MatchAnalysis() {
 
   // States pour live
   const [isLive, setIsLive] = useState(false);
-  const [liveStats, setLiveStats] = useState<TeamStats[]>([]);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [lineups, setLineups] = useState<Lineup[]>([]);
-  const [players, setPlayers] = useState<PlayerStat[]>([]);
-  const [odds, setOdds] = useState<OddsLive[]>([]);
+  const [liveStats, setLiveStats] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
+  const [lineups, setLineups] = useState<any[]>([]);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [odds, setOdds] = useState<any[]>([]);
   const [oddsPre, setOddsPre] = useState<any[]>([]);
   const [fixture, setFixture] = useState<any>({});
   const [error, setError] = useState<string | null>(null);
 
   const [debugInfo, setDebugInfo] = useState({
-  modelUsed: '',
-  matchesAnalyzed: 0,
-  analysisTimestamp: '',
-});
+    modelUsed: "",
+    matchesAnalyzed: 0,
+    analysisTimestamp: "",
+  });
 
   // Récupère le type de match d'abord
   useEffect(() => {
@@ -154,12 +152,12 @@ export default function MatchAnalysis() {
     setError(null);
 
     axios
-      .get(`http://localhost:8000/api/matchs/${id}/`)
+      .get(`/api/matchs/${id}/`)
       .then((res) => {
         if (res.data.is_live) {
           setIsLive(true);
           axios
-            .get(`http://localhost:8000/api/matchs/${id}/stats-live/`)
+            .get(`/api/matchs/${id}/stats-live/`)
             .then((res) => {
               setLiveStats(res.data.statistics || []);
               setEvents(res.data.events || []);
@@ -172,8 +170,8 @@ export default function MatchAnalysis() {
                 id: res.data.fixture?.[0]?.fixture?.id ?? Number(id),
                 home_team: res.data.fixture?.[0]?.teams?.home?.name || "Équipe 1",
                 away_team: res.data.fixture?.[0]?.teams?.away?.name || "Équipe 2",
-                logo_home: res.data.fixture?.[0]?.teams?.home?.logo,
-                logo_away: res.data.fixture?.[0]?.teams?.away?.logo,
+                logo_home: res.data.fixture?.[0]?.teams?.home?.logo || undefined,
+                logo_away: res.data.fixture?.[0]?.teams?.away?.logo || undefined,
                 time: res.data.fixture?.[0]?.fixture?.date?.slice(11, 16) || "",
                 is_live: true,
               });
@@ -186,16 +184,14 @@ export default function MatchAnalysis() {
         } else {
           setIsLive(false);
           axios
-            .get(`http://localhost:8000/api/matchs/${id}/analyse/`)
+            .get(`/api/matchs/${id}/analyse/`)
             .then((res) => {
               setMatch(res.data);
-              
               setDebugInfo({
                 modelUsed: res.data.model,
                 matchesAnalyzed: res.data.predictions?.length || 0,
                 analysisTimestamp: new Date().toLocaleString(),
               });
-
               setLoading(false);
             })
             .catch(() => {
@@ -212,15 +208,19 @@ export default function MatchAnalysis() {
 
   const handleSaveTicket = () => {
     if (!match) return;
+    if (!ready) {
+      alert("⏳ Initialisation en cours… réessayez dans une seconde.");
+      return;
+    }
     const payload = {
       match_id: match.id,
-      user_id: 1, // à adapter avec la vraie session utilisateur plus tard
+      // plus de user_id : backend => owner=request.user
       status: "pending",
       risk_level: "faible",
-      result: ""
+      result: "",
     };
     axios
-      .post("http://localhost:8000/api/tickets/", payload)
+      .post("/api/tickets/", payload)
       .then(() => alert("✅ Ticket enregistré avec succès ! 🎉"))
       .catch(() => {
         alert("❌ Erreur lors de l’enregistrement du ticket.");
@@ -237,9 +237,7 @@ export default function MatchAnalysis() {
           <p className="mb-6">
             Cliquez sur le bouton ci-dessous pour voir la liste des matchs du jour ou en live et en choisir un à analyser.
           </p>
-          <Button onClick={() => navigate("/")}>
-            Sélectionner un match
-          </Button>
+          <Button onClick={() => navigate("/")}>Sélectionner un match</Button>
         </div>
       </div>
     );
@@ -253,6 +251,8 @@ export default function MatchAnalysis() {
     );
   }
 
+  const placeholder = "https://placehold.co/40x40";
+
   return (
     <div className="min-h-screen px-4 py-6 bg-white dark:bg-gray-800 text-gray-800 dark:text-white transition-colors duration-300">
       <Button onClick={() => navigate(-1)} className="mb-4">
@@ -261,22 +261,20 @@ export default function MatchAnalysis() {
       <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 shadow text-center transition-colors duration-300">
         <div className="text-xl font-bold mb-2">🕒 {match.time}</div>
         <div className="flex justify-center items-center gap-4 mb-4">
-          <img src={match.logo_home} alt={match.home_team} className="w-10 h-10" />
+          <img src={match.logo_home || placeholder} alt={match.home_team} className="w-10 h-10" />
           <span className="font-semibold">{match.home_team}</span>
           <span className="text-gray-500 dark:text-gray-300">vs</span>
           <span className="font-semibold">{match.away_team}</span>
-          <img src={match.logo_away} alt={match.away_team} className="w-10 h-10" />
+          <img src={match.logo_away || placeholder} alt={match.away_team} className="w-10 h-10" />
         </div>
       </div>
 
       <div className="mt-6 space-y-6">
         {isLive ? (
           <>
-          {/* 5 derniers matchs & Face à face même en live */}
+            {/* 5 derniers matchs & Face à face même en live */}
             <div>
-              <h3 className="font-semibold text-lg mb-2">
-                📊 5 derniers matchs - {match.home_team}
-              </h3>
+              <h3 className="font-semibold text-lg mb-2">📊 5 derniers matchs - {match.home_team}</h3>
               <div className="space-y-2">
                 {match.stats?.last5Home?.length ? (
                   match.stats.last5Home.map((m, i) => (
@@ -290,9 +288,7 @@ export default function MatchAnalysis() {
               </div>
             </div>
             <div>
-              <h3 className="font-semibold text-lg mb-2">
-                📊 5 derniers matchs - {match.away_team}
-              </h3>
+              <h3 className="font-semibold text-lg mb-2">📊 5 derniers matchs - {match.away_team}</h3>
               <div className="space-y-2">
                 {match.stats?.last5Away?.length ? (
                   match.stats.last5Away.map((m, i) => (
@@ -360,9 +356,7 @@ export default function MatchAnalysis() {
         ) : (
           <>
             <div>
-              <h3 className="font-semibold text-lg mb-2">
-                📊 5 derniers matchs - {match.home_team}
-              </h3>
+              <h3 className="font-semibold text-lg mb-2">📊 5 derniers matchs - {match.home_team}</h3>
               <div className="space-y-2">
                 {match.stats?.last5Home?.length ? (
                   match.stats.last5Home.map((m, i) => (
@@ -376,9 +370,7 @@ export default function MatchAnalysis() {
               </div>
             </div>
             <div>
-              <h3 className="font-semibold text-lg mb-2">
-                📊 5 derniers matchs - {match.away_team}
-              </h3>
+              <h3 className="font-semibold text-lg mb-2">📊 5 derniers matchs - {match.away_team}</h3>
               <div className="space-y-2">
                 {match.stats?.last5Away?.length ? (
                   match.stats.last5Away.map((m, i) => (
@@ -405,27 +397,6 @@ export default function MatchAnalysis() {
                 )}
               </div>
             </div>
-            <div>
-              <h3 className="font-semibold text-lg mb-2">📈 Statistiques avancées</h3>
-              {match.stats?.advanced && match.stats.advanced.length > 0 ? (
-                <div className="space-y-2">
-                  {match.stats.advanced.map((stat, i) => (
-                    <div key={i} className="bg-gray-100 dark:bg-gray-700 rounded-lg p-2">
-                      <div className="font-semibold mb-1">{stat.type}</div>
-                      <div className="flex flex-wrap gap-3">
-                        {stat.statistics.map((item, j) => (
-                          <span key={j} className="text-xs">
-                            {item.type}: <b>{item.value}</b>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-gray-400 italic">Non disponible</div>
-              )}
-            </div>
             <SuggestionBlock
               predictions={match.predictions}
               message={match.message}
@@ -434,14 +405,12 @@ export default function MatchAnalysis() {
           </>
         )}
         <AdminBanner
-        modelUsed={debugInfo.modelUsed}
-        matchesAnalyzed={debugInfo.matchesAnalyzed}
-        analysisTimestamp={debugInfo.analysisTimestamp}
+          modelUsed={debugInfo.modelUsed}
+          matchesAnalyzed={debugInfo.matchesAnalyzed}
+          analysisTimestamp={debugInfo.analysisTimestamp}
         />
         <div className="text-center mt-6">
-          <Button onClick={handleSaveTicket}>
-            ✅ Enregistrer ce ticket
-          </Button>
+          <Button onClick={handleSaveTicket}>✅ Enregistrer ce ticket</Button>
         </div>
       </div>
     </div>
