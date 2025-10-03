@@ -63,7 +63,7 @@ function renderHistory(list?: any[]) {
   );
 }
 
-// ---------- Blocs spécialisés pour les stats avancées ----------
+// ---------- Blocs spécialisés pour les stats avancées (LIVE) ----------
 function FixtureDetails({ fixture }: { fixture: any }) {
   if (!fixture || Object.keys(fixture).length === 0) {
     return <div className="text-gray-400 italic">Non disponible…</div>;
@@ -178,6 +178,23 @@ type MatchStats = {
 // Type compatible avec SuggestionBlock (risk requis)
 type UISuggestion = { risk: string; text: string };
 
+type FeaturesUsed = {
+  league?: { id?: number; name?: string; season?: string | number };
+  context?: { fixture_id?: number; kickoff_iso?: string; venue?: string; city?: string };
+  standings?: { home?: any; away?: any };
+  form?: { home?: any; away?: any; h2h_compact?: any };
+  stats_avg?: { home?: any; away?: any };
+  signals?: Record<string, any>;
+  home_advantage?: { applied?: boolean; coef?: number };
+  raw_subset?: any;
+};
+
+type MarketUsed = {
+  source?: string;
+  odds?: { home?: number; draw?: number; away?: number; [k: string]: any };
+  implied_probs?: { home?: number; draw?: number; away?: number; overround?: number };
+};
+
 type MatchDetails = {
   id: number;
   home_team: string;
@@ -191,7 +208,41 @@ type MatchDetails = {
   message?: string;
   details_debug?: { no_suggestion_reason?: string; model_reason?: string };
   model?: string;
+
+  // ⬇️ Nouveaux blocs
+  features_used?: FeaturesUsed;
+  market_used?: MarketUsed;
 };
+
+// ---------- Composants UI pour "Données utilisées par l’algorithme" ----------
+function Row({ label, value }: { label: string; value?: any }) {
+  return (
+    <div className="flex justify-between gap-3 text-sm">
+      <span className="text-gray-600 dark:text-gray-300">{label}</span>
+      <span className="font-medium">{value ?? "—"}</span>
+    </div>
+  );
+}
+
+function KeyValueList({ obj }: { obj?: Record<string, any> }) {
+  if (!obj || Object.keys(obj).length === 0) return <div className="text-gray-400 italic">Non disponible…</div>;
+  return (
+    <div className="space-y-1">
+      {Object.entries(obj).map(([k, v]) => (
+        <Row key={k} label={k} value={typeof v === "object" ? JSON.stringify(v) : String(v)} />
+      ))}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow" open={false}>
+      <summary className="cursor-pointer select-none font-semibold mb-2">{title}</summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  );
+}
 
 // ---------- Page ----------
 export default function MatchAnalysis() {
@@ -299,6 +350,9 @@ export default function MatchAnalysis() {
                 message: d.message,
                 details_debug: d.details_debug,
                 model: d.model,
+                // ⬇️ nouveaux blocs renvoyés par l’API
+                features_used: d.features_used ?? {},
+                market_used: d.market_used ?? {},
               });
 
               setDebugInfo({
@@ -347,7 +401,7 @@ export default function MatchAnalysis() {
           <h2 className="text-xl font-semibold mb-4">
             Vous n'avez pas encore sélectionné un match à analyser.
           </h2>
-          <p className="mb-6">
+        <p className="mb-6">
             Cliquez sur le bouton ci-dessous pour voir la liste des matchs du jour ou en live et en
             choisir un à analyser.
           </p>
@@ -366,6 +420,8 @@ export default function MatchAnalysis() {
   }
 
   const placeholder = "https://placehold.co/40x40";
+  const f = match.features_used ?? {};
+  const mkt = match.market_used ?? {};
 
   return (
     <div className="min-h-screen px-4 py-6 bg-white dark:bg-gray-800 text-gray-800 dark:text-white transition-colors durée-300">
@@ -447,6 +503,7 @@ export default function MatchAnalysis() {
           </>
         ) : (
           <>
+            {/* Historique */}
             <div>
               <h3 className="font-semibold text-lg mb-2">📊 5 derniers matchs - {match.home_team}</h3>
               {renderHistory(match.stats?.last5Home)}
@@ -462,11 +519,109 @@ export default function MatchAnalysis() {
               {renderHistory(match.stats?.headToHead)}
             </div>
 
+            {/* Suggestions */}
             <SuggestionBlock
               predictions={match.predictions ?? []}
               message={match.message}
               details_debug={match.details_debug}
             />
+
+            {/* ========== NOUVELLE SECTION : Données utilisées par l'algorithme ========== */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg mt-4">🧠 Données utilisées par l’algorithme</h3>
+
+              {/* Contexte / Ligue / Saison */}
+              <Section title="🏟️ Contexte & Ligue">
+                <div className="space-y-2">
+                  <KeyValueList obj={f?.league} />
+                  <div className="mt-2">
+                    <KeyValueList obj={f?.context} />
+                  </div>
+                </div>
+              </Section>
+
+              {/* Classement */}
+              <Section title="📈 Classement (standings)">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="font-medium mb-1">Domicile</div>
+                    <KeyValueList obj={f?.standings?.home} />
+                  </div>
+                  <div>
+                    <div className="font-medium mb-1">Extérieur</div>
+                    <KeyValueList obj={f?.standings?.away} />
+                  </div>
+                </div>
+              </Section>
+
+              {/* Forme & H2H */}
+              <Section title="🔥 Forme & Face-à-face">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="font-medium mb-1">Forme domicile</div>
+                    <KeyValueList obj={f?.form?.home} />
+                  </div>
+                  <div>
+                    <div className="font-medium mb-1">Forme extérieur</div>
+                    <KeyValueList obj={f?.form?.away} />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="font-medium mb-1">H2H (compact)</div>
+                  <KeyValueList obj={f?.form?.h2h_compact} />
+                </div>
+              </Section>
+
+              {/* Stats moyennes */}
+              <Section title="📊 Stats moyennes (xG, SOT, corners, buts, rouges)">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="font-medium mb-1">Domicile</div>
+                    <KeyValueList obj={f?.stats_avg?.home} />
+                  </div>
+                  <div>
+                    <div className="font-medium mb-1">Extérieur</div>
+                    <KeyValueList obj={f?.stats_avg?.away} />
+                  </div>
+                </div>
+              </Section>
+
+              {/* Signaux / Ratings */}
+              <Section title="🧩 Signaux & Ratings">
+                <KeyValueList obj={f?.signals} />
+              </Section>
+
+              {/* Avantage terrain */}
+              <Section title="🏠 Avantage terrain">
+                <KeyValueList obj={f?.home_advantage} />
+              </Section>
+
+              {/* Marché (cotes & probas implicites) */}
+              <Section title="💸 Marché (cotes 1X2 & probabilités implicites)">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="font-medium mb-1">Cotes 1X2</div>
+                    <KeyValueList obj={mkt?.odds} />
+                  </div>
+                  <div>
+                    <div className="font-medium mb-1">Probabilités implicites</div>
+                    <KeyValueList obj={mkt?.implied_probs} />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <Row label="Source" value={mkt?.source ?? "—"} />
+                </div>
+              </Section>
+
+              {/* Avancé (dump JSON minimal si dispo) */}
+              {f?.raw_subset && (
+                <Section title="🧪 Avancé (extrait brut utilisé)">
+                  <pre className="overflow-x-auto text-xs bg-gray-50 dark:bg-gray-900 p-3 rounded-lg">
+                    {JSON.stringify(f.raw_subset, null, 2)}
+                  </pre>
+                </Section>
+              )}
+            </div>
           </>
         )}
 
