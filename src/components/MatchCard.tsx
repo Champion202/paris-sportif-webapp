@@ -26,8 +26,6 @@ export const MatchCard = ({ match, isLive }: MatchCardProps) => {
           ? "border-red-500 animate-pulse"
           : "border-transparent"
       }`}
-      onClick={() => navigate(`/analyse/${match.id}`)}
-      title="Voir l'analyse de ce match"
     >
       {/* Badge LIVE animé */}
       {isLive && (
